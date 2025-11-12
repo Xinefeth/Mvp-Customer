@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Gastos Ocr</string>
+	<string>Gastos OCR</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -45,5 +45,14 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+
+	<!-- 🚀 PERMISOS PARA CÁMARA Y GALERÍA -->
+	<key>NSCameraUsageDescription</key>
+	<string>Necesitamos usar la cámara para escanear tus recibos y detectar el texto.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>La app puede acceder a tu galería para seleccionar imágenes de gastos.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>La app puede guardar fotos procesadas en tu galería si así lo deseas.</string>
+
 </dict>
 </plist>
