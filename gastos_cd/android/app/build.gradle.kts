@@ -1,7 +1,7 @@
 plugins {
     id("com.android.application")
     id("kotlin-android")
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+    // El plugin de Flutter debe ir después de los de Android y Kotlin.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
@@ -20,10 +20,8 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
+        // Tu ID de aplicación
         applicationId = "com.example.gastos_cd"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
@@ -32,9 +30,22 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
+            // 🔹 Configuración optimizada para producción
+            isMinifyEnabled = true
+            isShrinkResources = true
+            // 🔹 Indica a Gradle que use ProGuard con tus reglas personalizadas
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+
+            // 🔹 Firma temporal con la config de debug (para pruebas)
             signingConfig = signingConfigs.getByName("debug")
+        }
+
+        debug {
+            // 🔹 Build normal de desarrollo
+            isMinifyEnabled = false
         }
     }
 }
