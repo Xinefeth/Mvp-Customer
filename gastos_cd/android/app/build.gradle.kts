@@ -33,7 +33,6 @@ android {
             // 🔹 Configuración optimizada para producción
             isMinifyEnabled = true
             isShrinkResources = true
-            // 🔹 Indica a Gradle que use ProGuard con tus reglas personalizadas
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

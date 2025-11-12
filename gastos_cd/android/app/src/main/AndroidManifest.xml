@@ -1,20 +1,16 @@
-android/app/src/main/AndroidManifest.xml
-
-
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.example.gastos">
+    package="com.example.gastos_cd">
 
-    <!-- 🔒 PERMISOS REQUERIDOS -->
+    <!-- ✅ Permisos necesarios -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
-        android:label="gastos"
+        android:label="Gastos OCR"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher"
-        android:requestLegacyExternalStorage="true">
+        android:icon="@mipmap/ic_launcher">
 
         <activity
             android:name=".MainActivity"
@@ -25,8 +21,7 @@ android/app/src/main/AndroidManifest.xml
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
-
-            <!-- Pantalla de lanzamiento -->
+            
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
@@ -37,13 +32,13 @@ android/app/src/main/AndroidManifest.xml
             </intent-filter>
         </activity>
 
-        <!-- Necesario para que Flutter registre plugins -->
+        <!-- Necesario para Flutter -->
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
     </application>
 
-    <!-- 🔍 Necesario para reconocimiento de texto -->
+    <!-- Permite al motor Flutter consultar apps que procesan texto -->
     <queries>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT" />
