@@ -39,6 +39,62 @@ class _HomePageState extends State<HomePage> {
 
   bool _procesando = false;
 
+  // -------------------------------------------------------------------
+  // 🔍 EXTRAER ITEMS Y PRECIOS DETECTADOS EN EL TEXTO (MEJORADO)
+  // -------------------------------------------------------------------
+  Map<String, dynamic> extraerItems(String texto) {
+    final List<Map<String, dynamic>> items = [];
+    double total = 0;
+
+    // Estandarizamos símbolos
+    texto = texto.replaceAll('S/.', 'S/');
+    texto = texto.replaceAll('S :', 'S/');
+    texto = texto.replaceAll('S -', 'S/');
+
+    final lineas = texto.split('\n');
+
+    final regex = RegExp(
+      r'(.+?)\s*(S\/|S|S:|\$)?\s*([0-9]+(?:[.,][0-9]{2,3})?)',
+      caseSensitive: false,
+    );
+
+    for (var linea in lineas) {
+      final l = linea.trim();
+      if (l.isEmpty) continue;
+
+      final match = regex.firstMatch(l);
+
+      if (match != null) {
+        final nombre = match.group(1)!.trim();
+
+        // Evita nombres inválidos
+        if (nombre.length < 2) continue;
+        if (RegExp(r'^\d+$').hasMatch(nombre)) continue;
+
+        var precioStr = match.group(3)!.trim();
+        precioStr = precioStr.replaceAll(',', '');
+
+        final precio = double.tryParse(precioStr);
+        if (precio == null || precio == 0) continue;
+
+        items.add({
+          'nombre': nombre.toUpperCase(),
+          'precio': precio,
+        });
+
+        total += precio;
+      }
+    }
+
+    return {
+      'items': items,
+      'total': total,
+    };
+  }
+
+  // -------------------------------------------------------------------
+  // 📸 TOMAR FOTO Y REGISTRAR GASTO
+  // -------------------------------------------------------------------
   Future<void> _tomarFotoYRegistrar() async {
     final XFile? foto = await _picker.pickImage(source: ImageSource.camera);
     if (foto == null) return;
@@ -51,14 +107,19 @@ class _HomePageState extends State<HomePage> {
           await _textRecognizer.processImage(inputImage);
 
       final texto = recognizedText.text;
-      final monto = _extraerMonto(texto);
       final categoria = _clasificarGasto(texto);
+
+      final analisis = extraerItems(texto);
+      final items = analisis['items'];
+      final total = analisis['total'];
 
       final nuevoGasto = {
         'id': DateTime.now().millisecondsSinceEpoch,
         'descripcion': texto.split('\n').first.trim(),
         'textoCompleto': texto,
-        'monto': monto ?? 'Pendiente',
+        'items': items,
+        'total': total,
+        'monto': total == 0 ? 'Pendiente' : total.toStringAsFixed(2),
         'categoria': categoria,
         'fecha': DateTime.now(),
       };
@@ -80,189 +141,87 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  /// Detecta montos tipo 23.50 o 15,90
+  // -------------------------------------------------------------------
+  // 🔢 BACKUP
+  // -------------------------------------------------------------------
   String? _extraerMonto(String texto) {
     final regex = RegExp(r'(\d+[.,]\d{2})');
     final match = regex.firstMatch(texto.replaceAll(',', '.'));
     return match != null ? match.group(1) : null;
   }
 
+  // -------------------------------------------------------------------
+  // 🧠 CLASIFICADOR DE CATEGORÍAS
+  // -------------------------------------------------------------------
   String _clasificarGasto(String texto) {
     texto = texto.toLowerCase();
 
-    // 🛒 1. ALIMENTACIÓN
     if (texto.contains('pollo') ||
         texto.contains('comida') ||
         texto.contains('burger') ||
         texto.contains('restaurant') ||
         texto.contains('restaurante') ||
-        texto.contains('kfc') ||
-        texto.contains('bembos') ||
         texto.contains('pizza') ||
-        texto.contains('subway') ||
-        texto.contains('pollo a la brasa') ||
-        texto.contains('fast food') ||
         texto.contains('snack') ||
-        texto.contains('bebida') ||
-        texto.contains('supermercado') ||
-        texto.contains('tottus') ||
-        texto.contains('plaza vea') ||
-        texto.contains('wong') ||
-        texto.contains('vivanda') ||
-        texto.contains('market') ||
-        texto.contains('minimarket') ||
-        texto.contains('delivery') ||
-        texto.contains('rapi') ||
-        texto.contains('rappi') ||
-        texto.contains('glovo') ||
-        texto.contains('pedidos ya') ||
-        texto.contains('booster')) {
+        texto.contains('supermercado')) {
       return '🍔 Alimentación';
     }
 
-    // 🚍 2. TRANSPORTE
     if (texto.contains('uber') ||
         texto.contains('taxi') ||
         texto.contains('didi') ||
-        texto.contains('cabify') ||
         texto.contains('bus') ||
-        texto.contains('pasaje') ||
-        texto.contains('gasolina') ||
-        texto.contains('grifo') ||
-        texto.contains('peaje') ||
-        texto.contains('estacionamiento') ||
-        texto.contains('paradero') ||
-        texto.contains('mantenimiento') ||
-        texto.contains('auto') ||
-        texto.contains('vehículo') ||
-        texto.contains('lubricentro')) {
+        texto.contains('gasolina')) {
       return '🚗 Transporte';
     }
 
-    // 🏠 3. VIVIENDA
-    if (texto.contains('alquiler') ||
-        texto.contains('renta') ||
-        texto.contains('departamento') ||
-        texto.contains('cuarto') ||
-        texto.contains('habitacion') ||
-        texto.contains('luz') ||
+    if (texto.contains('luz') ||
         texto.contains('agua') ||
         texto.contains('gas') ||
         texto.contains('internet') ||
-        texto.contains('claro') ||
-        texto.contains('movistar') ||
-        texto.contains('entel') ||
-        texto.contains('cable') ||
-        texto.contains('mantenimiento del hogar') ||
-        texto.contains('mueble') ||
-        texto.contains('electrodomestico')) {
+        texto.contains('alquiler')) {
       return '🏠 Vivienda';
     }
 
-    // 🛡 4. SALUD
-    if (texto.contains('farmacia') ||
+    if (texto.contains('doctor') ||
+        texto.contains('farmacia') ||
         texto.contains('botica') ||
-        texto.contains('inkafarma') ||
-        texto.contains('mifarma') ||
-        texto.contains('doctor') ||
-        texto.contains('consulta') ||
-        texto.contains('clinica') ||
-        texto.contains('seguro') ||
-        texto.contains('analisis') ||
-        texto.contains('laboratorio') ||
-        texto.contains('examen')) {
+        texto.contains('clinica')) {
       return '🩺 Salud';
     }
 
-    // 📚 5. EDUCACIÓN
-    if (texto.contains('colegio') ||
-        texto.contains('universidad') ||
-        texto.contains('matrícula') ||
-        texto.contains('curso') ||
-        texto.contains('taller') ||
-        texto.contains('diploma') ||
-        texto.contains('certificación') ||
+    if (texto.contains('universidad') ||
+        texto.contains('colegio') ||
         texto.contains('libro') ||
-        texto.contains('materiales')) {
+        texto.contains('curso')) {
       return '📚 Educación';
     }
 
-    // 🎉 6. ENTRETENIMIENTO
     if (texto.contains('cine') ||
-        texto.contains('streaming') ||
         texto.contains('netflix') ||
-        texto.contains('spotify') ||
-        texto.contains('disney') ||
         texto.contains('hbo') ||
-        texto.contains('fiesta') ||
-        texto.contains('bar') ||
-        texto.contains('discoteca') ||
-        texto.contains('deporte') ||
-        texto.contains('gym') ||
-        texto.contains('videojuego') ||
-        texto.contains('steam') ||
-        texto.contains('musica')) {
+        texto.contains('spotify')) {
       return '🎉 Entretenimiento';
     }
 
-    // 👗 7. COMPRAS PERSONALES
     if (texto.contains('ropa') ||
-        texto.contains('polera') ||
         texto.contains('zapatilla') ||
-        texto.contains('calzado') ||
-        texto.contains('camisa') ||
-        texto.contains('falda') ||
-        texto.contains('cartera') ||
-        texto.contains('accesorio') ||
-        texto.contains('collar') ||
-        texto.contains('spa') ||
-        texto.contains('peluquería') ||
-        texto.contains('maquillaje') ||
-        texto.contains('cosmético')) {
+        texto.contains('spa')) {
       return '🛍️ Compras personales';
     }
 
-    // 📱 8. TECNOLOGÍA
-    if (texto.contains('app') ||
-        texto.contains('software') ||
-        texto.contains('suscripción') ||
-        texto.contains('telefono') ||
-        texto.contains('smartphone') ||
-        texto.contains('audifono') ||
-        texto.contains('laptop') ||
-        texto.contains('monitor') ||
-        texto.contains('teclado') ||
-        texto.contains('mouse') ||
-        texto.contains('computadora') ||
+    if (texto.contains('laptop') ||
         texto.contains('celular') ||
-        texto.contains('electronico')) {
+        texto.contains('monitor')) {
       return '📱 Tecnología';
     }
 
-    // 🐶 9. MASCOTAS
-    if (texto.contains('mascota') ||
-        texto.contains('perro') ||
+    if (texto.contains('perro') ||
         texto.contains('gato') ||
-        texto.contains('alimento mascota') ||
-        texto.contains('veterinaria') ||
-        texto.contains('baño mascota') ||
-        texto.contains('hueso') ||
-        texto.contains('juguete mascota')) {
+        texto.contains('veterinaria')) {
       return '🐶 Mascotas';
     }
 
-    // 🧱 12. OTROS
-    if (texto.contains('tramite') ||
-        texto.contains('papeleta') ||
-        texto.contains('multa') ||
-        texto.contains('servicio') ||
-        texto.contains('cargo') ||
-        texto.contains('comisión') ||
-        texto.contains('otros')) {
-      return '📦 Otros gastos';
-    }
-
-    // Default
     return '💰 Otros';
   }
 
@@ -272,6 +231,9 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
+  // -------------------------------------------------------------------
+  // 📄 ABRIR DETALLE DEL GASTO
+  // -------------------------------------------------------------------
   Future<void> _abrirDetalle(Map<String, dynamic> gasto) async {
     final resultado = await Navigator.push(
       context,
@@ -280,7 +242,6 @@ class _HomePageState extends State<HomePage> {
       ),
     );
 
-    // Si viene null => usuario canceló
     if (resultado != null) {
       setState(() {
         final index = _gastos.indexWhere((g) => g['id'] == resultado['id']);
@@ -291,6 +252,9 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  // -------------------------------------------------------------------
+  // 🖼️ UI LISTA DE GASTOS
+  // -------------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -328,7 +292,8 @@ class _HomePageState extends State<HomePage> {
                         ),
                         title: Text(gasto['descripcion']),
                         subtitle: Text(
-                            'Monto: S/${gasto['monto']} — ${gasto['fecha'].toString().substring(0, 16)}'),
+                          'Total: S/${gasto['total'].toStringAsFixed(2)} — ${gasto['fecha'].toString().substring(0, 16)}',
+                        ),
                         trailing: const Icon(Icons.chevron_right),
                       ),
                     );
