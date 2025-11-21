@@ -42,55 +42,57 @@ class _HomePageState extends State<HomePage> {
   // -------------------------------------------------------------------
   // 🔍 EXTRAER ITEMS Y PRECIOS DETECTADOS EN EL TEXTO (MEJORADO)
   // -------------------------------------------------------------------
-  Map<String, dynamic> extraerItems(String texto) {
-    final List<Map<String, dynamic>> items = [];
-    double total = 0;
+Map<String, dynamic> extraerItems(String texto) {
+  final List<Map<String, dynamic>> items = [];
+  double total = 0;
 
-    // Estandarizamos símbolos
-    texto = texto.replaceAll('S/.', 'S/');
-    texto = texto.replaceAll('S :', 'S/');
-    texto = texto.replaceAll('S -', 'S/');
+  final lineas = texto.split('\n').map((l) => l.trim()).toList();
 
-    final lineas = texto.split('\n');
+  final regexPrecio = RegExp(r'([0-9]+(?:[.,][0-9]{2}))');
 
-    final regex = RegExp(
-      r'(.+?)\s*(S\/|S|S:|\$)?\s*([0-9]+(?:[.,][0-9]{2,3})?)',
-      caseSensitive: false,
-    );
+  // Palabras que no queremos usar como nombre
+  final prohibidas = [
+    "total", "igv", "venta", "percepcion", "cnt", "vta",
+    "t. x cobrar", "subtotal", "importe"
+  ];
 
-    for (var linea in lineas) {
-      final l = linea.trim();
-      if (l.isEmpty) continue;
+  String? ultimoNombre;
 
-      final match = regex.firstMatch(l);
+  for (var linea in lineas) {
+    if (linea.isEmpty) continue;
 
-      if (match != null) {
-        final nombre = match.group(1)!.trim();
+    final precios = regexPrecio.allMatches(linea);
 
-        // Evita nombres inválidos
-        if (nombre.length < 2) continue;
-        if (RegExp(r'^\d+$').hasMatch(nombre)) continue;
+    // Si la línea tiene precio(s)
+    if (precios.isNotEmpty) {
+      final precioStr = precios.last.group(1)!.replaceAll(',', '.');
+      final precio = double.tryParse(precioStr);
 
-        var precioStr = match.group(3)!.trim();
-        precioStr = precioStr.replaceAll(',', '');
-
-        final precio = double.tryParse(precioStr);
-        if (precio == null || precio == 0) continue;
-
+      if (precio != null && ultimoNombre != null) {
         items.add({
-          'nombre': nombre.toUpperCase(),
+          'nombre': ultimoNombre.toUpperCase(),
           'precio': precio,
         });
-
         total += precio;
+        ultimoNombre = null;
       }
+
+      continue;
     }
 
-    return {
-      'items': items,
-      'total': total,
-    };
+    // Si NO tiene precio, pero es texto válido, la tratamos como nombre
+    final lower = linea.toLowerCase();
+    if (!prohibidas.any((p) => lower.contains(p)) &&
+        !RegExp(r'^\d').hasMatch(linea)) {
+      ultimoNombre = linea;
+    }
   }
+
+  return {
+    'items': items,
+    'total': total,
+  };
+}
 
   // -------------------------------------------------------------------
   // 📸 TOMAR FOTO Y REGISTRAR GASTO
