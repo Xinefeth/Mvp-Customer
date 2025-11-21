@@ -11,28 +11,28 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # Íconos estilo iOS
   cupertino_icons: ^1.0.8
 
-  # 📸 Permite tomar fotos desde la cámara o galería
+  # 📸 Tomar foto
   image_picker: ^1.1.2
 
-  # 🔍 OCR: reconocimiento de texto con Google ML Kit
+  # 🔍 OCR ML Kit
   google_mlkit_text_recognition: ^0.15.0
 
-  # 📂 Manejo de archivos temporales y rutas del sistema
+  # 📥 Elegir archivos PDF / imágenes
+  file_picker: ^8.0.0
+
+  # 📄 PDF a imágenes
+  pdfx: ^2.6.0
+
+  # Directorios del sistema
   path_provider: ^2.1.5
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
 
-  # Reglas de buenas prácticas de código
   flutter_lints: ^5.0.0
 
 flutter:
   uses-material-design: true
-
-  # Si luego agregas imágenes o íconos personalizados, los defines aquí:
-  # assets:
-  #   - assets/images/

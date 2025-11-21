@@ -1,8 +1,18 @@
 import 'dart:io';
+import 'dart:typed_data';   // 👈 IMPORT correcto para Uint8List
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+
 import 'gasto_detalle.dart';
+
+// 📥 Elegir archivos (PDF / imágenes)
+import 'package:file_picker/file_picker.dart';
+
+// 📄 Render PDF con PDFX
+import 'package:pdfx/pdfx.dart';
+
 
 void main() {
   runApp(const GastosOCRApp());
@@ -40,190 +50,202 @@ class _HomePageState extends State<HomePage> {
   bool _procesando = false;
 
   // -------------------------------------------------------------------
-  // 🔍 EXTRAER ITEMS Y PRECIOS DETECTADOS EN EL TEXTO (MEJORADO)
+  // 🔍 ANALIZAR TEXTO PARA EXTRAER ITEMS + PRECIOS
   // -------------------------------------------------------------------
-Map<String, dynamic> extraerItems(String texto) {
-  final List<Map<String, dynamic>> items = [];
-  double total = 0;
+  Map<String, dynamic> extraerItems(String texto) {
+    final List<Map<String, dynamic>> items = [];
+    double total = 0;
 
-  final lineas = texto.split('\n').map((l) => l.trim()).toList();
+    final regexPrecio = RegExp(r'([0-9]+(?:[.,][0-9]{2}))');
+    final prohibidas = [
+      "total", "igv", "venta", "percepcion",
+      "cnt", "vta", "t. x cobrar", "subtotal", "importe"
+    ];
 
-  final regexPrecio = RegExp(r'([0-9]+(?:[.,][0-9]{2}))');
+    String? ultimoNombre;
 
-  // Palabras que no queremos usar como nombre
-  final prohibidas = [
-    "total", "igv", "venta", "percepcion", "cnt", "vta",
-    "t. x cobrar", "subtotal", "importe"
-  ];
+    for (var linea in texto.split('\n')) {
+      final l = linea.trim();
+      if (l.isEmpty) continue;
 
-  String? ultimoNombre;
+      final precios = regexPrecio.allMatches(l);
 
-  for (var linea in lineas) {
-    if (linea.isEmpty) continue;
+      if (precios.isNotEmpty) {
+        final precioStr = precios.last.group(1)!.replaceAll(',', '.');
+        final precio = double.tryParse(precioStr);
 
-    final precios = regexPrecio.allMatches(linea);
-
-    // Si la línea tiene precio(s)
-    if (precios.isNotEmpty) {
-      final precioStr = precios.last.group(1)!.replaceAll(',', '.');
-      final precio = double.tryParse(precioStr);
-
-      if (precio != null && ultimoNombre != null) {
-        items.add({
-          'nombre': ultimoNombre.toUpperCase(),
-          'precio': precio,
-        });
-        total += precio;
-        ultimoNombre = null;
+        if (precio != null && ultimoNombre != null) {
+          items.add({
+            'nombre': ultimoNombre.toUpperCase(),
+            'precio': precio,
+          });
+          total += precio;
+          ultimoNombre = null;
+        }
+        continue;
       }
 
-      continue;
+      final lower = l.toLowerCase();
+      if (!prohibidas.any((p) => lower.contains(p)) &&
+          !RegExp(r'^\d').hasMatch(l)) {
+        ultimoNombre = l;
+      }
     }
 
-    // Si NO tiene precio, pero es texto válido, la tratamos como nombre
-    final lower = linea.toLowerCase();
-    if (!prohibidas.any((p) => lower.contains(p)) &&
-        !RegExp(r'^\d').hasMatch(linea)) {
-      ultimoNombre = linea;
-    }
+    return {'items': items, 'total': total};
   }
 
-  return {
-    'items': items,
-    'total': total,
-  };
-}
-
   // -------------------------------------------------------------------
-  // 📸 TOMAR FOTO Y REGISTRAR GASTO
+  // 📸 TOMAR FOTO Y REGISTRAR
   // -------------------------------------------------------------------
   Future<void> _tomarFotoYRegistrar() async {
     final XFile? foto = await _picker.pickImage(source: ImageSource.camera);
     if (foto == null) return;
+    await _procesarImagen(File(foto.path));
+  }
 
+  // -------------------------------------------------------------------
+  // 📂 SUBIR ARCHIVO PDF / IMAGEN
+  // -------------------------------------------------------------------
+  Future<void> _subirArchivo() async {
+    final selected = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+    );
+
+    if (selected == null) return;
+
+    final path = selected.files.single.path!;
+    final file = File(path);
+
+    if (path.endsWith(".pdf")) {
+      await _procesarPDF(file);
+    } else {
+      await _procesarImagen(file);
+    }
+  }
+
+  // -------------------------------------------------------------------
+  // 📄 PROCESAR PDF COMPLETO (PDFX)
+  // -------------------------------------------------------------------
+Future<void> _procesarPDF(File archivo) async {
+  setState(() => _procesando = true);
+
+  try {
+    final pdf = await PdfDocument.openFile(archivo.path);
+    String textoExtraido = "";
+
+    for (int page = 1; page <= pdf.pagesCount; page++) {
+      final pdfPage = await pdf.getPage(page);
+
+      // pdfx 2.6.0 usa width/height como double
+      final pageImage = await pdfPage.render(
+        width: pdfPage.width,
+        height: pdfPage.height,
+      );
+
+      // pdfx 2.6.0 usa .bytes (Uint8List?) directamente
+      final Uint8List bytes = pageImage!.bytes;
+
+      final inputImage = InputImage.fromBytes(
+        bytes: bytes,
+        metadata: InputImageMetadata(
+          size: Size(
+            pdfPage.width.toDouble(),
+            pdfPage.height.toDouble(),
+          ),
+          rotation: InputImageRotation.rotation0deg,
+          format: InputImageFormat.bgra8888,
+          bytesPerRow: (pdfPage.width * 4).toInt(),  // convertir a int
+        ),
+      );
+
+      final text = await _textRecognizer.processImage(inputImage);
+      textoExtraido += "\n" + text.text;
+
+      await pdfPage.close();
+    }
+
+    await _registrarGasto(textoExtraido);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("📄 PDF procesado correctamente"),
+        backgroundColor: Colors.green,
+      ),
+    );
+  } catch (e) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text("Error: $e")));
+  } finally {
+    setState(() => _procesando = false);
+  }
+}
+
+  // -------------------------------------------------------------------
+  // 🖼️ PROCESAR IMAGEN
+  // -------------------------------------------------------------------
+  Future<void> _procesarImagen(File archivo) async {
     setState(() => _procesando = true);
 
     try {
-      final inputImage = InputImage.fromFile(File(foto.path));
+      final inputImage = InputImage.fromFile(archivo);
       final RecognizedText recognizedText =
           await _textRecognizer.processImage(inputImage);
 
-      final texto = recognizedText.text;
-      final categoria = _clasificarGasto(texto);
-
-      final analisis = extraerItems(texto);
-      final items = analisis['items'];
-      final total = analisis['total'];
-
-      final nuevoGasto = {
-        'id': DateTime.now().millisecondsSinceEpoch,
-        'descripcion': texto.split('\n').first.trim(),
-        'textoCompleto': texto,
-        'items': items,
-        'total': total,
-        'monto': total == 0 ? 'Pendiente' : total.toStringAsFixed(2),
-        'categoria': categoria,
-        'fecha': DateTime.now(),
-      };
-
-      setState(() => _gastos.insert(0, nuevoGasto));
+      await _registrarGasto(recognizedText.text);
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('✅ Gasto registrado automáticamente ($categoria)'),
-          backgroundColor: Colors.green.shade700,
+        const SnackBar(
+          content: Text("🖼️ Imagen procesada correctamente"),
+          backgroundColor: Colors.green,
         ),
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('⚠️ Error procesando imagen: $e')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text("Error: $e")));
     } finally {
       setState(() => _procesando = false);
     }
   }
 
   // -------------------------------------------------------------------
-  // 🔢 BACKUP
+  // 🧾 REGISTRAR GASTO A LA LISTA
   // -------------------------------------------------------------------
-  String? _extraerMonto(String texto) {
-    final regex = RegExp(r'(\d+[.,]\d{2})');
-    final match = regex.firstMatch(texto.replaceAll(',', '.'));
-    return match != null ? match.group(1) : null;
+  Future<void> _registrarGasto(String texto) async {
+    final categoria = _clasificarGasto(texto);
+    final analisis = extraerItems(texto);
+
+    final items = analisis['items'];
+    final total = analisis['total'];
+
+    final nuevoGasto = {
+      'id': DateTime.now().millisecondsSinceEpoch,
+      'descripcion': texto.split('\n').first.trim(),
+      'textoCompleto': texto,
+      'items': items,
+      'total': total,
+      'monto': total == 0 ? 'Pendiente' : total.toStringAsFixed(2),
+      'categoria': categoria,
+      'fecha': DateTime.now(),
+    };
+
+    setState(() => _gastos.insert(0, nuevoGasto));
   }
 
   // -------------------------------------------------------------------
-  // 🧠 CLASIFICADOR DE CATEGORÍAS
+  // 🧠 CLASIFICAR GASTO
   // -------------------------------------------------------------------
   String _clasificarGasto(String texto) {
     texto = texto.toLowerCase();
-
-    if (texto.contains('pollo') ||
-        texto.contains('comida') ||
-        texto.contains('burger') ||
-        texto.contains('restaurant') ||
-        texto.contains('restaurante') ||
-        texto.contains('pizza') ||
-        texto.contains('snack') ||
-        texto.contains('supermercado')) {
-      return '🍔 Alimentación';
-    }
-
-    if (texto.contains('uber') ||
-        texto.contains('taxi') ||
-        texto.contains('didi') ||
-        texto.contains('bus') ||
-        texto.contains('gasolina')) {
-      return '🚗 Transporte';
-    }
-
-    if (texto.contains('luz') ||
-        texto.contains('agua') ||
-        texto.contains('gas') ||
-        texto.contains('internet') ||
-        texto.contains('alquiler')) {
-      return '🏠 Vivienda';
-    }
-
-    if (texto.contains('doctor') ||
-        texto.contains('farmacia') ||
-        texto.contains('botica') ||
-        texto.contains('clinica')) {
-      return '🩺 Salud';
-    }
-
-    if (texto.contains('universidad') ||
-        texto.contains('colegio') ||
-        texto.contains('libro') ||
-        texto.contains('curso')) {
-      return '📚 Educación';
-    }
-
-    if (texto.contains('cine') ||
-        texto.contains('netflix') ||
-        texto.contains('hbo') ||
-        texto.contains('spotify')) {
-      return '🎉 Entretenimiento';
-    }
-
-    if (texto.contains('ropa') ||
-        texto.contains('zapatilla') ||
-        texto.contains('spa')) {
-      return '🛍️ Compras personales';
-    }
-
-    if (texto.contains('laptop') ||
-        texto.contains('celular') ||
-        texto.contains('monitor')) {
-      return '📱 Tecnología';
-    }
-
-    if (texto.contains('perro') ||
-        texto.contains('gato') ||
-        texto.contains('veterinaria')) {
-      return '🐶 Mascotas';
-    }
-
+    if (texto.contains('comida') || texto.contains('pollo')) return '🍔 Alimentación';
+    if (texto.contains('uber') || texto.contains('taxi')) return '🚗 Transporte';
+    if (texto.contains('luz') || texto.contains('agua')) return '🏠 Vivienda';
+    if (texto.contains('doctor') || texto.contains('farmacia')) return '🩺 Salud';
+    if (texto.contains('universidad') || texto.contains('colegio')) return '📚 Educación';
+    if (texto.contains('netflix') || texto.contains('cine')) return '🎉 Entretenimiento';
+    if (texto.contains('ropa')) return '🛍 Compras';
+    if (texto.contains('celular')) return '📱 Tecnología';
     return '💰 Otros';
   }
 
@@ -239,63 +261,58 @@ Map<String, dynamic> extraerItems(String texto) {
   Future<void> _abrirDetalle(Map<String, dynamic> gasto) async {
     final resultado = await Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => GastoDetalle(gasto: gasto),
-      ),
+      MaterialPageRoute(builder: (_) => GastoDetalle(gasto: gasto)),
     );
 
     if (resultado != null) {
-      setState(() {
-        final index = _gastos.indexWhere((g) => g['id'] == resultado['id']);
-        if (index != -1) {
-          _gastos[index] = resultado;
-        }
-      });
+      final index = _gastos.indexWhere((g) => g['id'] == resultado['id']);
+      if (index != -1) {
+        setState(() => _gastos[index] = resultado);
+      }
     }
   }
 
   // -------------------------------------------------------------------
-  // 🖼️ UI LISTA DE GASTOS
+  // 🖼️ UI
   // -------------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('📸 Registro Automático de Gastos'),
+        title: const Text('Registro Automático de Gastos'),
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.upload_file),
+            onPressed: _procesando ? null : _subirArchivo,
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _procesando ? null : _tomarFotoYRegistrar,
         icon: const Icon(Icons.camera_alt),
-        label: const Text('Tomar Foto'),
+        label: const Text("Tomar Foto"),
       ),
       body: _procesando
           ? const Center(child: CircularProgressIndicator())
           : _gastos.isEmpty
               ? const Center(
                   child: Text(
-                    'Aún no hay gastos registrados.\nPresiona 📷 para empezar.',
+                    "Aún no hay gastos.\nPresiona 📷 o 📄 para empezar.",
                     textAlign: TextAlign.center,
                   ),
                 )
               : ListView.builder(
                   padding: const EdgeInsets.all(16),
                   itemCount: _gastos.length,
-                  itemBuilder: (context, index) {
-                    final gasto = _gastos[index];
+                  itemBuilder: (context, i) {
+                    final g = _gastos[i];
                     return Card(
-                      elevation: 3,
-                      margin: const EdgeInsets.symmetric(vertical: 8),
                       child: ListTile(
-                        onTap: () => _abrirDetalle(gasto),
-                        leading: Text(
-                          gasto['categoria'],
-                          style: const TextStyle(fontSize: 20),
-                        ),
-                        title: Text(gasto['descripcion']),
-                        subtitle: Text(
-                          'Total: S/${gasto['total'].toStringAsFixed(2)} — ${gasto['fecha'].toString().substring(0, 16)}',
-                        ),
+                        onTap: () => _abrirDetalle(g),
+                        leading: Text(g['categoria'], style: const TextStyle(fontSize: 22)),
+                        title: Text(g['descripcion']),
+                        subtitle: Text("Total: S/${g['total'].toStringAsFixed(2)}"),
                         trailing: const Icon(Icons.chevron_right),
                       ),
                     );
