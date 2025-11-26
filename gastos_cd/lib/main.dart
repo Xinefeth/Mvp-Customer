@@ -1,18 +1,17 @@
 import 'dart:io';
-import 'dart:typed_data';   // 👈 IMPORT correcto para Uint8List
+import 'dart:typed_data';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
 import 'gasto_detalle.dart';
+import 'dashboard_page.dart';
 
-// 📥 Elegir archivos (PDF / imágenes)
 import 'package:file_picker/file_picker.dart';
-
-// 📄 Render PDF con PDFX
 import 'package:pdfx/pdfx.dart';
-
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   runApp(const GastosOCRApp());
@@ -49,17 +48,43 @@ class _HomePageState extends State<HomePage> {
 
   bool _procesando = false;
 
-  // -------------------------------------------------------------------
-  // 🔍 ANALIZAR TEXTO PARA EXTRAER ITEMS + PRECIOS
-  // -------------------------------------------------------------------
+  // =======================================================
+  // 🚀 Cargar datos desde SharedPreferences
+  // =======================================================
+  @override
+  void initState() {
+    super.initState();
+    _cargarGastos();
+  }
+
+  Future<void> _cargarGastos() async {
+    final prefs = await SharedPreferences.getInstance();
+    final data = prefs.getString("gastos");
+
+    if (data != null) {
+      final lista = jsonDecode(data) as List;
+      _gastos.clear();
+      _gastos.addAll(lista.map((e) => Map<String, dynamic>.from(e)));
+      setState(() {});
+    }
+  }
+
+  Future<void> _guardarGastos() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString("gastos", jsonEncode(_gastos));
+  }
+
+  // =======================================================
+  // 🔍 Extraer items + total de texto OCR
+  // =======================================================
   Map<String, dynamic> extraerItems(String texto) {
     final List<Map<String, dynamic>> items = [];
     double total = 0;
 
     final regexPrecio = RegExp(r'([0-9]+(?:[.,][0-9]{2}))');
     final prohibidas = [
-      "total", "igv", "venta", "percepcion",
-      "cnt", "vta", "t. x cobrar", "subtotal", "importe"
+      "total", "igv", "venta", "percepcion", "cnt", "vta",
+      "t. x cobrar", "subtotal", "importe"
     ];
 
     String? ultimoNombre;
@@ -75,10 +100,7 @@ class _HomePageState extends State<HomePage> {
         final precio = double.tryParse(precioStr);
 
         if (precio != null && ultimoNombre != null) {
-          items.add({
-            'nombre': ultimoNombre.toUpperCase(),
-            'precio': precio,
-          });
+          items.add({'nombre': ultimoNombre.toUpperCase(), 'precio': precio});
           total += precio;
           ultimoNombre = null;
         }
@@ -92,21 +114,21 @@ class _HomePageState extends State<HomePage> {
       }
     }
 
-    return {'items': items, 'total': total};
+    return {"items": items, "total": total};
   }
 
-  // -------------------------------------------------------------------
-  // 📸 TOMAR FOTO Y REGISTRAR
-  // -------------------------------------------------------------------
+  // =======================================================
+  // 📸 Tomar foto
+  // =======================================================
   Future<void> _tomarFotoYRegistrar() async {
     final XFile? foto = await _picker.pickImage(source: ImageSource.camera);
     if (foto == null) return;
     await _procesarImagen(File(foto.path));
   }
 
-  // -------------------------------------------------------------------
-  // 📂 SUBIR ARCHIVO PDF / IMAGEN
-  // -------------------------------------------------------------------
+  // =======================================================
+  // 📥 Subir archivo
+  // =======================================================
   Future<void> _subirArchivo() async {
     final selected = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -115,85 +137,79 @@ class _HomePageState extends State<HomePage> {
 
     if (selected == null) return;
 
-    final path = selected.files.single.path!;
-    final file = File(path);
+    final file = File(selected.files.single.path!);
 
-    if (path.endsWith(".pdf")) {
+    if (file.path.endsWith(".pdf")) {
       await _procesarPDF(file);
     } else {
       await _procesarImagen(file);
     }
   }
 
-  // -------------------------------------------------------------------
-  // 📄 PROCESAR PDF COMPLETO (PDFX)
-  // -------------------------------------------------------------------
-Future<void> _procesarPDF(File archivo) async {
-  setState(() => _procesando = true);
+  // =======================================================
+  // 📄 Procesar PDF
+  // =======================================================
+  Future<void> _procesarPDF(File archivo) async {
+    setState(() => _procesando = true);
 
-  try {
-    final pdf = await PdfDocument.openFile(archivo.path);
-    String textoExtraido = "";
+    try {
+      final pdf = await PdfDocument.openFile(archivo.path);
+      String textoExtraido = "";
 
-    for (int page = 1; page <= pdf.pagesCount; page++) {
-      final pdfPage = await pdf.getPage(page);
+      for (int i = 1; i <= pdf.pagesCount; i++) {
+        final page = await pdf.getPage(i);
 
-      // pdfx 2.6.0 usa width/height como double
-      final pageImage = await pdfPage.render(
-        width: pdfPage.width,
-        height: pdfPage.height,
-      );
+        final rendered = await page.render(
+          width: page.width,
+          height: page.height,
+        );
 
-      // pdfx 2.6.0 usa .bytes (Uint8List?) directamente
-      final Uint8List bytes = pageImage!.bytes;
+        final Uint8List bytes = rendered!.bytes;
 
-      final inputImage = InputImage.fromBytes(
-        bytes: bytes,
-        metadata: InputImageMetadata(
-          size: Size(
-            pdfPage.width.toDouble(),
-            pdfPage.height.toDouble(),
+        final inputImage = InputImage.fromBytes(
+          bytes: bytes,
+          metadata: InputImageMetadata(
+            size: Size(page.width.toDouble(), page.height.toDouble()),
+            rotation: InputImageRotation.rotation0deg,
+            format: InputImageFormat.bgra8888,
+            bytesPerRow: (page.width * 4).toInt(),
           ),
-          rotation: InputImageRotation.rotation0deg,
-          format: InputImageFormat.bgra8888,
-          bytesPerRow: (pdfPage.width * 4).toInt(),  // convertir a int
+        );
+
+        final text = await _textRecognizer.processImage(inputImage);
+        textoExtraido += "\n${text.text}";
+
+        await page.close();
+      }
+
+      await _registrarGasto(textoExtraido);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("📄 PDF procesado correctamente"),
+          backgroundColor: Colors.green,
         ),
       );
-
-      final text = await _textRecognizer.processImage(inputImage);
-      textoExtraido += "\n" + text.text;
-
-      await pdfPage.close();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: $e")),
+      );
+    } finally {
+      setState(() => _procesando = false);
     }
-
-    await _registrarGasto(textoExtraido);
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("📄 PDF procesado correctamente"),
-        backgroundColor: Colors.green,
-      ),
-    );
-  } catch (e) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text("Error: $e")));
-  } finally {
-    setState(() => _procesando = false);
   }
-}
 
-  // -------------------------------------------------------------------
-  // 🖼️ PROCESAR IMAGEN
-  // -------------------------------------------------------------------
+  // =======================================================
+  // 🖼️ Procesar imagen
+  // =======================================================
   Future<void> _procesarImagen(File archivo) async {
     setState(() => _procesando = true);
 
     try {
       final inputImage = InputImage.fromFile(archivo);
-      final RecognizedText recognizedText =
-          await _textRecognizer.processImage(inputImage);
+      final text = await _textRecognizer.processImage(inputImage);
 
-      await _registrarGasto(recognizedText.text);
+      await _registrarGasto(text.text);
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -202,97 +218,105 @@ Future<void> _procesarPDF(File archivo) async {
         ),
       );
     } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("Error: $e")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: $e")),
+      );
     } finally {
       setState(() => _procesando = false);
     }
   }
 
-  // -------------------------------------------------------------------
-  // 🧾 REGISTRAR GASTO A LA LISTA
-  // -------------------------------------------------------------------
+  // =======================================================
+  // 🧾 Registrar gasto
+  // =======================================================
   Future<void> _registrarGasto(String texto) async {
-    final categoria = _clasificarGasto(texto);
     final analisis = extraerItems(texto);
 
-    final items = analisis['items'];
-    final total = analisis['total'];
-
-    final nuevoGasto = {
+    final nuevo = {
       'id': DateTime.now().millisecondsSinceEpoch,
       'descripcion': texto.split('\n').first.trim(),
       'textoCompleto': texto,
-      'items': items,
-      'total': total,
-      'monto': total == 0 ? 'Pendiente' : total.toStringAsFixed(2),
-      'categoria': categoria,
-      'fecha': DateTime.now(),
+      'items': analisis['items'],
+      'total': analisis['total'],
+      'monto': analisis['total'] == 0
+          ? "Pendiente"
+          : analisis['total'].toStringAsFixed(2),
+      'categoria': _clasificarGasto(texto),
+      'fecha': DateTime.now().toIso8601String(),
     };
 
-    setState(() => _gastos.insert(0, nuevoGasto));
+    setState(() => _gastos.insert(0, nuevo));
+    await _guardarGastos();
   }
 
-  // -------------------------------------------------------------------
-  // 🧠 CLASIFICAR GASTO
-  // -------------------------------------------------------------------
-  String _clasificarGasto(String texto) {
-    texto = texto.toLowerCase();
-    if (texto.contains('comida') || texto.contains('pollo')) return '🍔 Alimentación';
-    if (texto.contains('uber') || texto.contains('taxi')) return '🚗 Transporte';
-    if (texto.contains('luz') || texto.contains('agua')) return '🏠 Vivienda';
-    if (texto.contains('doctor') || texto.contains('farmacia')) return '🩺 Salud';
-    if (texto.contains('universidad') || texto.contains('colegio')) return '📚 Educación';
-    if (texto.contains('netflix') || texto.contains('cine')) return '🎉 Entretenimiento';
-    if (texto.contains('ropa')) return '🛍 Compras';
-    if (texto.contains('celular')) return '📱 Tecnología';
+  // =======================================================
+  // 🗑️ Eliminar gasto
+  // =======================================================
+  Future<void> _eliminarGasto(int id) async {
+    setState(() {
+      _gastos.removeWhere((g) => g['id'] == id);
+    });
+
+    await _guardarGastos();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("🗑️ Gasto eliminado"),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+
+  // =======================================================
+  // 🧠 Clasificación simple
+  // =======================================================
+  String _clasificarGasto(String t) {
+    t = t.toLowerCase();
+    if (t.contains('pollo') || t.contains('comida')) return '🍔 Alimentación';
+    if (t.contains('uber') || t.contains('taxi')) return '🚗 Transporte';
+    if (t.contains('luz') || t.contains('agua')) return '🏠 Vivienda';
+    if (t.contains('farmacia') || t.contains('doctor')) return '🩺 Salud';
+    if (t.contains('universidad')) return '📚 Educación';
+    if (t.contains('cine') || t.contains('netflix')) return '🎉 Entretenimiento';
+    if (t.contains('ropa')) return '🛍 Compras';
+    if (t.contains('celular')) return '📱 Tecnología';
     return '💰 Otros';
   }
 
-  @override
-  void dispose() {
-    _textRecognizer.close();
-    super.dispose();
-  }
-
-  // -------------------------------------------------------------------
-  // 📄 ABRIR DETALLE DEL GASTO
-  // -------------------------------------------------------------------
-  Future<void> _abrirDetalle(Map<String, dynamic> gasto) async {
-    final resultado = await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => GastoDetalle(gasto: gasto)),
-    );
-
-    if (resultado != null) {
-      final index = _gastos.indexWhere((g) => g['id'] == resultado['id']);
-      if (index != -1) {
-        setState(() => _gastos[index] = resultado);
-      }
-    }
-  }
-
-  // -------------------------------------------------------------------
-  // 🖼️ UI
-  // -------------------------------------------------------------------
+  // =======================================================
+  // UI
+  // =======================================================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Registro Automático de Gastos'),
+        title: const Text("Registro Automático de Gastos"),
         centerTitle: true,
         actions: [
           IconButton(
             icon: const Icon(Icons.upload_file),
             onPressed: _procesando ? null : _subirArchivo,
           ),
+          IconButton(
+            icon: const Icon(Icons.bar_chart),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => DashboardPage(gastos: _gastos),
+                ),
+              );
+            },
+          ),
         ],
       ),
+
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _procesando ? null : _tomarFotoYRegistrar,
         icon: const Icon(Icons.camera_alt),
         label: const Text("Tomar Foto"),
       ),
+
       body: _procesando
           ? const Center(child: CircularProgressIndicator())
           : _gastos.isEmpty
@@ -305,19 +329,81 @@ Future<void> _procesarPDF(File archivo) async {
               : ListView.builder(
                   padding: const EdgeInsets.all(16),
                   itemCount: _gastos.length,
-                  itemBuilder: (context, i) {
+                  itemBuilder: (_, i) {
                     final g = _gastos[i];
+
+                    // =======================================================
+                    // ⭐ CARD CUSTOM — SIEMPRE MUESTRA EL ÍCONO DE BORRAR ⭐
+                    // =======================================================
                     return Card(
-                      child: ListTile(
+                      child: InkWell(
                         onTap: () => _abrirDetalle(g),
-                        leading: Text(g['categoria'], style: const TextStyle(fontSize: 22)),
-                        title: Text(g['descripcion']),
-                        subtitle: Text("Total: S/${g['total'].toStringAsFixed(2)}"),
-                        trailing: const Icon(Icons.chevron_right),
+                        child: Padding(
+                          padding: const EdgeInsets.all(14),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              // 🏷 Categoría
+                              Text(
+                                g['categoria'],
+                                style: const TextStyle(fontSize: 22),
+                              ),
+
+                              const SizedBox(width: 12),
+
+                              // 📄 Descripción + Total
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      g['descripcion'],
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                    Text(
+                                      "Total: S/${g['total'].toStringAsFixed(2)}",
+                                      style: const TextStyle(color: Colors.black54),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              // 🗑️ BORRAR
+                              IconButton(
+                                icon: const Icon(Icons.delete, color: Colors.red),
+                                onPressed: () => _eliminarGasto(g['id']),
+                              ),
+
+                              // ➡️ Flecha
+                              const Icon(Icons.chevron_right),
+                            ],
+                          ),
+                        ),
                       ),
                     );
                   },
                 ),
     );
+  }
+
+  // =======================================================
+  // 🌟 Abrir detalle
+  // =======================================================
+  Future<void> _abrirDetalle(Map<String, dynamic> gasto) async {
+    final res = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => GastoDetalle(gasto: gasto)),
+    );
+
+    if (res != null) {
+      final index = _gastos.indexWhere((g) => g['id'] == res['id']);
+      if (index != -1) {
+        setState(() => _gastos[index] = res);
+        await _guardarGastos();
+      }
+    }
   }
 }

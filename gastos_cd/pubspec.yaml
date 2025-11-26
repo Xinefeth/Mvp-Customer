@@ -13,20 +13,26 @@ dependencies:
 
   cupertino_icons: ^1.0.8
 
-  # 📸 Tomar foto
+  # Tomar foto
   image_picker: ^1.1.2
 
-  # 🔍 OCR ML Kit
+  # OCR ML Kit
   google_mlkit_text_recognition: ^0.15.0
 
-  # 📥 Elegir archivos PDF / imágenes
+  # Elegir PDF / imágenes
   file_picker: ^8.0.0
 
-  # 📄 PDF a imágenes
+  # PDF -> imágenes
   pdfx: ^2.6.0
 
-  # Directorios del sistema
+  # Directorios
   path_provider: ^2.1.5
+
+  # Persistencia local
+  shared_preferences: ^2.3.2
+
+  fl_chart: ^0.69.0
+
 
 dev_dependencies:
   flutter_test:
