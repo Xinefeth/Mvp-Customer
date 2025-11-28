@@ -26,8 +26,27 @@ class GastosOCRApp extends StatelessWidget {
       title: 'Gastos OCR Automático',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
+        // 🎨 Paleta en tonos verdes
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.green),
+        scaffoldBackgroundColor: const Color(0xFFF3FFF6),
+        appBarTheme: AppBarTheme(
+          backgroundColor: Colors.green.shade700,
+          foregroundColor: Colors.white,
+          elevation: 2,
+        ),
+        floatingActionButtonTheme: FloatingActionButtonThemeData(
+          backgroundColor: Colors.green.shade600,
+          foregroundColor: Colors.white,
+        ),
+        // 👇 aquí estaba el error: usamos CardThemeData en vez de CardTheme
+        cardTheme: CardThemeData(
+          color: Colors.white,
+          elevation: 3,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
       ),
       home: const HomePage(),
     );
@@ -83,8 +102,15 @@ class _HomePageState extends State<HomePage> {
 
     final regexPrecio = RegExp(r'([0-9]+(?:[.,][0-9]{2}))');
     final prohibidas = [
-      "total", "igv", "venta", "percepcion", "cnt", "vta",
-      "t. x cobrar", "subtotal", "importe"
+      "total",
+      "igv",
+      "venta",
+      "percepcion",
+      "cnt",
+      "vta",
+      "t. x cobrar",
+      "subtotal",
+      "importe"
     ];
 
     String? ultimoNombre;
@@ -310,13 +336,11 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
       ),
-
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _procesando ? null : _tomarFotoYRegistrar,
         icon: const Icon(Icons.camera_alt),
         label: const Text("Tomar Foto"),
       ),
-
       body: _procesando
           ? const Center(child: CircularProgressIndicator())
           : _gastos.isEmpty
@@ -332,10 +356,8 @@ class _HomePageState extends State<HomePage> {
                   itemBuilder: (_, i) {
                     final g = _gastos[i];
 
-                    // =======================================================
-                    // ⭐ CARD CUSTOM — SIEMPRE MUESTRA EL ÍCONO DE BORRAR ⭐
-                    // =======================================================
                     return Card(
+                      margin: const EdgeInsets.only(bottom: 12),
                       child: InkWell(
                         onTap: () => _abrirDetalle(g),
                         child: Padding(
@@ -343,15 +365,11 @@ class _HomePageState extends State<HomePage> {
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
-                              // 🏷 Categoría
                               Text(
                                 g['categoria'],
                                 style: const TextStyle(fontSize: 22),
                               ),
-
                               const SizedBox(width: 12),
-
-                              // 📄 Descripción + Total
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -365,19 +383,18 @@ class _HomePageState extends State<HomePage> {
                                     ),
                                     Text(
                                       "Total: S/${g['total'].toStringAsFixed(2)}",
-                                      style: const TextStyle(color: Colors.black54),
+                                      style: const TextStyle(
+                                        color: Colors.black54,
+                                      ),
                                     ),
                                   ],
                                 ),
                               ),
-
-                              // 🗑️ BORRAR
                               IconButton(
-                                icon: const Icon(Icons.delete, color: Colors.red),
+                                icon:
+                                    const Icon(Icons.delete, color: Colors.red),
                                 onPressed: () => _eliminarGasto(g['id']),
                               ),
-
-                              // ➡️ Flecha
                               const Icon(Icons.chevron_right),
                             ],
                           ),
