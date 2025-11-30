@@ -11,6 +11,11 @@ dependencies:
   flutter:
     sdk: flutter
 
+  flutter_localizations:
+    sdk: flutter
+
+  image_cropper: ^8.0.2
+
   cupertino_icons: ^1.0.8
 
   # Tomar foto
@@ -35,6 +40,7 @@ dependencies:
 
   # 🖼 Procesamiento de imagen para mejorar el OCR
   image: ^4.5.4   # 👈 AGREGADO
+  intl: ^0.20.2
 
 dev_dependencies:
   flutter_test:
