@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "859015279020",
+    "project_id": "gastosocr-c00b8",
+    "storage_bucket": "gastosocr-c00b8.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:859015279020:android:c01930c0bbdae234380a09",
+        "android_client_info": {
+          "package_name": "com.example.gastos_cd"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "859015279020-3gqds4pfc9lo3sjteo1j648tl943jik6.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD_lZspeBgsR1YE0HgCcO49MZHsTWy6fjo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "859015279020-3gqds4pfc9lo3sjteo1j648tl943jik6.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
